@@ -107,7 +107,7 @@ Get-CsOnlineUser "AllanD@consoso.com" | select OnlineVoiceRoutingPolicy
 #####Dial Plans
 Get-CsEffectiveTenantDialPlan -Identity AllanD@consoso.com |fl
 
-Test-CsEffectiveTenantDialPlan -DialedNumber 001447590032994 -Identity AllanD@consoso.com
+Test-CsEffectiveTenantDialPlan -DialedNumber <Enter Phone Number> -Identity AllanD@consoso.com
 Test-CsEffectiveTenantDialPlan -DialedNumber 7571 -Identity AllanD@consoso.com
 
 
