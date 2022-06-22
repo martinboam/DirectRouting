@@ -1,4 +1,9 @@
-﻿####################################################################################################
+####################################################################################################
+#### THis script is a personal collection for configuring Direct routing for Microsoft TEams with voice routing, dial plan configuration ###
+##v1.1###
+##Please always check the scripts before running this and these is provided as examples only so use at your own risk###
+### Thank you ! and hope these are useful for you !! #####
+
 
 ###Check PowerShell Version to check for PowerShell 5.1 or Higher
 $PSVersionTable.PSVersion 
@@ -22,7 +27,7 @@ winrm set winrm/config/client/auth '@{Basic="true"}'
 
 
 #### Sign in#####################
-Connect-MicrosoftTeams 
+Connect-MicrosoftTeams
 
 
 ######## DIRECT ROUTING CONFIG ##############################################################################
@@ -52,20 +57,21 @@ Set-CsUser -Identity "<User name>" -LineUri $null
 ####### 4. Configure the phone number and enable enterprise voice and voicemail online###
 
 ######## If managing the user's phone number on-premises, issue the command
-Set-CsUser -Identity "AllanD@consoso.com" -EnterpriseVoiceEnabled $true -HostedVoiceMail $true
+
+Set-CsPhoneNumberAssignment -Identity "AllanD@consoso.com" -EnterpriseVoiceEnabled $false
+
 
 ##########If managing the user's phone number online, issue the command###
-Set-CsUser -Identity "AllanD@consoso.com" -EnterpriseVoiceEnabled $true -HostedVoiceMail $true -OnPremLineURI tel:+15102177792
+Set-CsPhoneNumberAssignment -Identity "AllanD@consoso.com" -PhoneNumber "+12315381011" -PhoneNumberType DirectRouting
 
 ######## add Ext (Optional) #####
-Set-CsUser -Identity "martin@consoso.com" -OnPremLineURI "tel:+14255388701;ext=1001" -EnterpriseVoiceEnabled $true -HostedVoiceMail $true
-Set-CsUser -Identity "bob@consoso.com" -OnPremLineURI "tel:+14255388701;ext=1002" -EnterpriseVoiceEnabled $true -HostedVoiceMail $true
-
+Set-CsPhoneNumberAssignment -Identity "martin@consoso.com" -PhoneNumber "+14255388701;ext=1001" -PhoneNumberType DirectRouting
+Set-CsPhoneNumberAssignment -Identity "bob@consoso.com" -PhoneNumber "+14255388701;ext=1002" -PhoneNumberType DirectRouting
 
 
 
 #### 5. Stale Script Check https://msunified.net/category/lync-server-2013/troubleshooting-lync-server-2013/
-Get-CsOnlineUser martin@consoso.com | Format-List UserPrincipalName, DisplayName, SipAddress, Enabled, TeamsUpgradeEffectiveMode, EnterpriseVoiceEnabled, HostedVoiceMail, City, UsageLocation, DialPlan, TenantDialPlan, OnlineVoiceRoutingPolicy, LineURI, OnPremLineURI, OnlineDialinConferencingPolicy, TeamsVideoInteropServicePolicy, TeamsCallingPolicy, HostingProvider, InterpretedUserType, VoicePolicy, CountryOrRegionDisplayName
+Get-CsOnlineUser AllanD@consoso.com | Format-List UserPrincipalName, DisplayName, SipAddress, Enabled, TeamsUpgradeEffectiveMode, EnterpriseVoiceEnabled, HostedVoiceMail, City, UsageLocation, DialPlan, TenantDialPlan, OnlineVoiceRoutingPolicy, LineURI, OnPremLineURI, OnlineDialinConferencingPolicy, TeamsVideoInteropServicePolicy, TeamsCallingPolicy, HostingProvider, InterpretedUserType, VoicePolicy, CountryOrRegionDisplayName
 
 
 ######## 6. VOICE ROUTING##########################
@@ -98,39 +104,60 @@ Grant-CsOnlineVoiceRoutingPolicy -Identity "AllanD@consoso.com" -PolicyName "US 
 
 Grant-CsOnlineVoiceRoutingPolicy -Identity "AllanD@consoso.com" -PolicyName "No restrictions"
 
-Get-CsOnlineUser "AllanD@consoso.com" | select OnlineVoiceRoutingPolicy
+Get-CsOnlineUser "martin@consoso.com" | select OnlineVoiceRoutingPolicy
 
 
+######### 7. Dial Plan Customization
 
+### Create Custom Dial Plan ###################
 
+#create normalizations rules
+$nr1 = New-CsVoiceNormalizationRule -Identity Redmond/4DigitEx -Description "Redmond/4DigitEx" -Pattern '^(\d{4})$' -Translation '+1425555$1' -InMemory
+$nr2 = New-CsVoiceNormalizationRule -Identity Redmond/5DigitEx -Description "Redmond/5DigitEx" -Pattern '^5(\d{4})$' -Translation '+1425555$1' -InMemory
+$nr3 = New-CsVoiceNormalizationRule -Identity Redmond/7digitcalling -Description "Redmond/7digitcalling" -Pattern '^(\d{7})$' -Translation '+1425$1' -InMemory
+$nr4 = New-CsVoiceNormalizationRule -Identity Redmond/RedmondOperator -Description "Redmond/RedmondOperator" -Pattern '^0$' -Translation '+14255550100' -InMemory
+$nr5 = New-CsVoiceNormalizationRule -Identity Redmond/RRedmondSitePrefix -Description "Redmond/RedmondSitePrefix" -Pattern '^6222(\d{4})$' -Translation '+1425555$1' -InMemory
+$nr6 = New-CsVoiceNormalizationRule -Identity Redmond/5digitRange -Description "Redmond/5digitRange" -Pattern '^([3-7]\d{4})$' -Translation '+142555$1' -InMemory
+$nr7 = New-CsVoiceNormalizationRule -Identity Redmond/PrefixAdded -Description "Redmond/PrefixAdded" -Pattern '^([2-9]\d\d[2-9]\d{6})$' -Translation '1$1' -InMemory
 
-#####Dial Plans
+#Add tenant dial plan with normalizations rules created above
+New-CsTenantDialPlan -Identity RedmondDialPlan -Description "Dial Plan for Redmond" -NormalizationRules @{Add=$nr1,$nr2,$nr3,$nr4,$nr5,$nr6,$nr7} -SimpleName "Dial-Plan-for-Redmond"
+
+#grant dialplan to user####
+Grant-CsTenantDialPlan -PolicyName RedmondDialPlan -Identity AllanD@consoso.com
+
+#####Get users Dial Plans
 Get-CsEffectiveTenantDialPlan -Identity AllanD@consoso.com |fl
 
-Test-CsEffectiveTenantDialPlan -DialedNumber <Enter Phone Number> -Identity AllanD@consoso.com
+#Test effective dialplans
+Test-CsEffectiveTenantDialPlan -DialedNumber 001447598732994 -Identity AllanD@consoso.com
 Test-CsEffectiveTenantDialPlan -DialedNumber 7571 -Identity AllanD@consoso.com
 
+#remove dialplan (if required)
+Remove-CsTenantDialPlan -Identity RedmondDialPlan
 
+### View Service Country dial plan (optional)
+Get-CsDialPlan -Identity US
+Get-CsDialPlan -Identity GB
 
-
+#### Get Tenant dialplans
+Get-CsTenantDialPlan
 
 
 
 ##CALL QUEUES ############################
 #Resource Account Number assignment
-Set-CsOnlineApplicationInstance -Identity cq-marketing@consoso.com -OnpremPhoneNumber +15102177793
 
-Set-CsOnlineApplicationInstance -Identity aa-support-attendant@consoso.com 
+#Make sure you dissociate the telephone number from the resource account before deleting it, to avoid getting your service number stuck in pending mode.
+Remove-CsPhoneNumberAssignment -Identity "AA-Support-Attendant@consoso.com" -PhoneNumber +12319386241 -PhoneNumberType DirectRouting
 
-Get-CsOnlineApplicationInstance -Identity cq-support-queue@consoso.com
+#assign phone number to resoruce account
+Set-CsPhoneNumberAssignment -Identity aa-contoso_main@contoso64.net -PhoneNumber +19295550150 -PhoneNumberType DirectRouting
+
+Set-CsPhoneNumberAssignment -Identity aa-support-attendant@consoso.com -PhoneNumber +441785558198 -PhoneNumberType DirectRouting
 
 #grant voice routing to call queue for dial out.
-Grant-CsOnlineVoiceRoutingPolicy -Identity "cq-marketing@consoso.com" -PolicyName "No restrictions"
-
-
-
-
-
+Grant-CsOnlineVoiceRoutingPolicy -Identity "AA-Support-Attendant@consoso.com" -PolicyName "No restrictions"
 
 
 
@@ -152,6 +179,7 @@ Grant-CsTeamsCallHoldPolicy -PolicyName "CustomMoH1" -Identity alexw@consoso.com
 
 
 
+
 #### Block inbound calls
 New-CsInboundBlockedNumberPattern -Name "BlockNumber1" -Enabled $True -Description "Block Fabrikam" -Pattern "^\+?14125551234$"
 
@@ -163,3 +191,76 @@ Get-CsInboundBlockedNumberPattern
 
 ##number expections
 New-CsInboundExemptNumberPattern  -Identity "AllowContoso1" -Pattern "^\+?1312555888[2|3]$" -Description "Allow Contoso helpdesk" -Enabled $True
+
+
+
+
+
+#### Teams Public Preview ####
+New-CsTeamsUpdateManagementPolicy -Identity EnablePreview -AllowPublicPreview Enabled
+
+Get-CsTeamsUpdateManagementPolicy
+
+Grant-CsTeamsUpdateManagementPolicy -PolicyName EnablePreview -Identity AlexW@M365x881502.OnMicrosoft.com
+
+
+
+
+#### Enable E2EE Policy
+
+New-CsTeamsEnhancedEncryptionPolicy -Identity ContosoPartnerTeamsEnhancedEncryptionPolicy -CallingEndtoEndEncryptionEnabledType DisabledUserOverride
+Set-CsTeamsEnhancedEncryptionPolicy -Identity "ContosoPartnerTeamsEnhancedEncryptionPolicy" -Description "allow useroverride"
+
+Get-CsTeamsEnhancedEncryptionPolicy
+
+Remove-CsTeamsEnhancedEncryptionPolicy -Identity ContosoPartnerTeamsEnhancedEncryptionPolicy
+
+Grant-CsTeamsEnhancedEncryptionPolicy -PolicyName ContosoPartnerTeamsEnhancedEncryptionPolicy -Identity Admin@M365x881502.OnMicrosoft.com
+Grant-CsTeamsEnhancedEncryptionPolicy -PolicyName ContosoPartnerTeamsEnhancedEncryptionPolicy -Identity AlexW@M365x881502.OnMicrosoft.com
+Grant-CsTeamsEnhancedEncryptionPolicy -PolicyName ContosoPartnerTeamsEnhancedEncryptionPolicy -Identity AdeleV@M365x881502.OnMicrosoft.com
+
+get-csonlineuser -Identity Alexw@M365x881502.OnMicrosoft.com
+
+
+
+## Unassigned Number
+
+$RAObjectId = (Get-CsOnlineApplicationInstance -Identity aa-hotline@consoso.com).ObjectId
+New-CsTeamsUnassignedNumberTreatment -Identity MainAA -Pattern "^\+15102177790$" -TargetType ResourceAccount -Target $RAObjectId -TreatmentPriority 1
+
+Set-CsTeamsUnassignedNumberTreatment -Identity MainAA -Description "Route Alex Number to AA"
+
+Get-CsTeamsUnassignedNumberTreatment
+
+
+$RAObjectId = (Get-CsOnlineApplicationInstance -Identity CQ-Support-Queue@consoso.com).ObjectId
+New-CsTeamsUnassignedNumberTreatment -Identity CallingPlanCQ2 -Pattern "^\+16165000094$" -TargetType ResourceAccount -Target $RAObjectId -TreatmentPriority 4
+
+
+###range
+$Content = Get-Content "C:\temp\customMOH1.mp3" -Encoding byte -ReadCount 0
+
+$AudioFile = Import-CsOnlineAudioFile -FileName "customMOH1.mp3" -Content $Content
+
+$fid = [System.Guid]::Parse($AudioFile.Id)
+
+New-CsTeamsUnassignedNumberTreatment -Identity AA -Pattern "^\+16165000094$" -TargetType Announcement -Target $fid.Guid -TreatmentPriority 1
+
+
+##### Surface Hub Account creation
+Import-Module ExchangeOnlineManagement
+Connect-ExchangeOnline -UserPrincipalName admin@m365x881502.onmicrosoft.com
+
+New-Mailbox -Name "Conf Room Sweepers" -Alias Conf Room Sweepers -Room -EnableRoomMailboxAccount $true -MicrosoftOnlineServicesID sweepers@m365x881502.onmicrosoft.com -RoomMailboxPassword (ConvertTo-SecureString -String 'Pa55word' -AsPlainText -Force)
+
+Set-CalendarProcessing -Identity "Conf Room Sweepers" -AutomateProcessing AutoAccept -AddOrganizerToSubject $false -DeleteComments $false -DeleteSubject $false -RemovePrivateProperty $false -AddAdditionalResponse $true -AdditionalResponse "This is a Teams room with Surface Hub!"
+
+Connect-MsolService -Credential $cred
+Set-MsolUser -UserPrincipalName Conf-Room-Sweepers@m365x881502.onmicrosoft.com -PasswordNeverExpires $true
+
+Get-MsolAccountSku
+
+Get-CalendarProcessing "Conf Room Sweepers" | fl AutomateProcessing
+Get-CalendarProcessing "Conf Room Sweepers" | fl ProcessExternalMeetingMessages
+
+Set-CalendarProcessing -Identity "Conf Room Sweepers" -ProcessExternalMeetingMessages $true
